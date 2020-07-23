@@ -1,0 +1,15 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Installing pre-reqs
+      - pip3 install -r requirements.txt
+  build:
+    commands:
+      - echo Started on `date`
+      - echo 'Deploying Network Account VPC'
+      - python3 scripts/deploy_network_account_vpc_and_vpn.py
+  post_build:
+    commands:
+      - echo Deploy Network Account VPC completed on `date`

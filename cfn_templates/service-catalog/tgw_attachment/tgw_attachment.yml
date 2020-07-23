@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  CentralNetworkAccountVpnVpcCIDR:
+    Description: VPC CIDR block of the central network VPN hub account VPC
+    Type: String
+  TgwAttachmentSubnet1:
+    Type: String
+    Description: Subnet ID to be associated with TGW attachment to VPC
+  TgwAttachmentSubnet2:
+    Type: String
+    Description: Subnet ID to be associated with TGW attachment to VPC
+  TransitGatewayId:
+    Description: Transit Gateway ID of the central network VPN hub account TGW
+    Type: String
+  VpcId:
+    Description: VPC Id that is getting attached to the central network VPN hub account TGW
+    Type: String
+
+# Conditional Parameters for Adding one or more routes to TGW
+  RouteTableId1:
+    Description: Subnet Route Table ID for TGW route to central network VPN hub account VPC CIDR - 1
+    Type: String
+    Default: ''
+  RouteTableId2:
+    Description: Subnet Route Table ID for TGW route to central network VPN hub account VPC CIDR - 2
+    Type: String
+    Default: ''
+  RouteTableId3:
+    Description: Subnet Route Table ID for TGW route to central network VPN hub account VPC CIDR - 3
+    Type: String
+    Default: ''
+
+Conditions:
+  CreateRouteForRouteTable1: !Not [!Equals [!Ref RouteTableId1, '']]
+  CreateRouteForRouteTable2: !Not [!Equals [!Ref RouteTableId2, '']]
+  CreateRouteForRouteTable3: !Not [!Equals [!Ref RouteTableId3, '']]
+
+Resources:
+  TransitGatewayAttachment:
+    Type: AWS::EC2::TransitGatewayAttachment
+    Properties:
+      SubnetIds:
+        - !Ref TgwAttachmentSubnet1
+        - !Ref TgwAttachmentSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub 'TGW Attachment for Test VPC to Main Network Hub VPC'
+      TransitGatewayId: !Ref TransitGatewayId
+      VpcId: !Ref VpcId
+
+  TransitGatewayRoute1:
+    DependsOn: TransitGatewayAttachment
+    Condition: CreateRouteForRouteTable1
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: !Ref CentralNetworkAccountVpnVpcCIDR
+      RouteTableId: !Ref RouteTableId1
+      TransitGatewayId: !Ref TransitGatewayId
+
+  TransitGatewayRoute2:
+    DependsOn: TransitGatewayAttachment
+    Condition: CreateRouteForRouteTable2
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: !Ref CentralNetworkAccountVpnVpcCIDR
+      RouteTableId: !Ref RouteTableId2
+      TransitGatewayId: !Ref TransitGatewayId
+
+  TransitGatewayRoute3:
+    DependsOn: TransitGatewayAttachment
+    Condition: CreateRouteForRouteTable3
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: !Ref CentralNetworkAccountVpnVpcCIDR
+      RouteTableId: !Ref RouteTableId3
+      TransitGatewayId: !Ref TransitGatewayId

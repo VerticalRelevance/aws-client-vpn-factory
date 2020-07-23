@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  NewVpcCIDR:
+    Type: String
+    Description: CIDR Range of the new VPC that is being added to the Client VPN connection via TGW
+  ClientVpnEndpoint:
+    Type: String
+    Description: Client VPN Endpoint
+  ClientVpnTargetNetworkSubnet1:
+    Type: String
+    Description: Client VPN Target Network Subnet 1
+  ClientVpnTargetNetworkSubnet2:
+    Type: String
+    Description: Client VPN Target Network Subnet 2
+  TransitGatewayId:
+    Description: Transit Gateway ID of the central network VPN hub account TGW
+    Type: String
+  RouteTableId:
+    Description: Subnet Route Table ID of Client VPN Associated Target Network Subnets
+    Type: String
+  AuthorizeAllUsers:
+    Description: Authorize all users in Active Directory for Client VPN Authorization Rule
+    Type: String
+    Default: true
+  AccessGroupId:
+    Description: Access Group ID in Active Directory for Client VPN Authorization Rule
+    Type: String
+    Default: ''
+
+Conditions:
+  AuthorizeAllUsersForVpnAuthRule: !And
+    - !Equals [ !Ref AuthorizeAllUsers, true ]
+    - !Equals [ !Ref AccessGroupId, '' ]
+
+  AllowOnlyAccessGroupForVpnAuthRule: !And
+    - !Equals [ !Ref AuthorizeAllUsers, false ]
+    - !Not [!Equals [!Ref AccessGroupId, '']]
+
+Resources:
+  ClientVpnAuthorizationRule:
+    Type: AWS::EC2::ClientVpnAuthorizationRule
+    Properties:
+      AccessGroupId:
+        !If [AllowOnlyAccessGroupForVpnAuthRule, !Ref AccessGroupId, !Ref "AWS::NoValue"]
+      AuthorizeAllGroups:
+        !If [AuthorizeAllUsersForVpnAuthRule, !Ref AuthorizeAllUsers, !Ref "AWS::NoValue"]
+      ClientVpnEndpointId: !Ref ClientVpnEndpoint
+      Description: !Sub 'Client VPN Authorization rule to allow clients to access VPC with CIDR ${NewVpcCIDR} through Transit Gateway'
+      TargetNetworkCidr: !Ref NewVpcCIDR
+
+  ClientVpnRouteToNewVpc1:
+    Type: AWS::EC2::ClientVpnRoute
+    Properties:
+      ClientVpnEndpointId: !Ref ClientVpnEndpoint
+      DestinationCidrBlock: !Ref NewVpcCIDR
+      TargetVpcSubnetId: !Ref ClientVpnTargetNetworkSubnet1
+
+  ClientVpnRouteToNewVpc2:
+    Type: AWS::EC2::ClientVpnRoute
+    Properties:
+      ClientVpnEndpointId: !Ref ClientVpnEndpoint
+      DestinationCidrBlock: !Ref NewVpcCIDR
+      TargetVpcSubnetId: !Ref ClientVpnTargetNetworkSubnet2
+
+  ClientVpnVpcTargetNetworkSubnetsRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: !Ref NewVpcCIDR
+      RouteTableId: !Ref RouteTableId
+      TransitGatewayId: !Ref TransitGatewayId

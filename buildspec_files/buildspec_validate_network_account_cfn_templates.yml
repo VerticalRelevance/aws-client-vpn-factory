@@ -1,0 +1,15 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Installing pre-reqs
+      - pip3 install -r requirements.txt
+  build:
+    commands:
+      - echo Started on `date`
+      - echo 'Validating Network Account VPC CFN Templates'
+      - python3 scripts/validate_network_account_vpc_templates.py
+  post_build:
+    commands:
+      - echo 'CFN Templates Validated'

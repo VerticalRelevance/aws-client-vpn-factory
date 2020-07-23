@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Installing pre-reqs
+      - pip3 install -r requirements.txt
+  pre_build:
+    commands:
+      - echo 'Uploading Service Catalog Files to $SERVICE_CATALOG_S3_BUCKET'
+      - aws s3 cp cfn_templates/service-catalog s3://$SERVICE_CATALOG_S3_BUCKET --exclude "*" --include "*.json" --include "*.yml" --recursive
+  build:
+    commands:
+      - echo Started on `date`
+      - echo 'Deploying Transit Gateway Attachment and Client VPN Route Setup Service Catalog Portfolios'
+      - python3 scripts/deploy_sc_portfolios.py
+      - echo 'Creating Service Catalog Provisioning Artifacts'
+      - python3 scripts/create_new_sc_artifacts.py
+  post_build:
+    commands:
+      - echo 'Deploying Transit Gateway Attachment and Client VPN Route Setup Service Catalog Portfolios completed on' `date`

@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  VpnClientCidrRange:
+    Type: String
+    Description: CIDR Range for VPN Clients
+    Default: '10.0.0.0/16'
+  ServerCertificateArn:
+    Type: String
+    Description: ACM Server Certificate ARN used for Client VPN
+  ClientVpnTargetNetworkVpcCidr:
+    Type: String
+    Description: Network account central VPC CIDR to be used as initial authorized route for Client VPN connection
+  ClientVpnTargetNetworkVpc:
+    Type: String
+    Description: Network account central VPC ID for Client VPN connection association
+  ClientVpnTargetNetworkSubnet1:
+    Type: String
+    Description: Network account central VPC Subnet ID for Client VPN connection association
+  ClientVpnTargetNetworkSubnet2:
+    Type: String
+    Description: Network account central VPC Subnet ID for Client VPN connection association
+  ActiveDirectoryId:
+    Description: Active Directory ID for Client VPN Auth
+    Type: String
+  ActiveDirectoryDnsServer1:
+    Description: Active Directory DNS Server 1
+    Type: String
+  ActiveDirectoryDnsServer2:
+    Description: Active Directory DNS Server 2
+    Type: String
+  BusinessUnit:
+    Description: AWS Organizational Unit
+    Type: String
+    Default: Business-Unit-1
+  AuthorizeAllUsers:
+    Description: Authorize all users in Active Directory for Client VPN Authorization Rule
+    Type: String
+    Default: true
+  AccessGroupId:
+    Description: Access Group ID in Active Directory for Client VPN Authorization Rule
+    Type: String
+    Default: ''
+Conditions:
+  AuthorizeAllUsersForVpnAuthRule: !And
+    - !Equals [ !Ref AuthorizeAllUsers, true ]
+    - !Equals [ !Ref AccessGroupId, '' ]
+
+  AllowOnlyAccessGroupForVpnAuthRule: !And
+    - !Equals [ !Ref AuthorizeAllUsers, false ]
+    - !Not [!Equals [!Ref AccessGroupId, '']]
+Resources:
+    ClientVpnCloudWatchLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: 'clientvpn-with-ad-log'
+
+    ClientVpnTargetNetworkAssociation:
+      Type: AWS::EC2::ClientVpnTargetNetworkAssociation
+      Properties:
+        ClientVpnEndpointId: !Ref ClientVpnEndpoint
+        SubnetId: !Ref ClientVpnTargetNetworkSubnet1
+    ClientVpnTargetNetworkAssociation2:
+      Type: AWS::EC2::ClientVpnTargetNetworkAssociation
+      Properties:
+        ClientVpnEndpointId: !Ref ClientVpnEndpoint
+        SubnetId: !Ref ClientVpnTargetNetworkSubnet2
+
+    ClientVpnEndpoint:
+      DependsOn: ClientVpnCloudWatchLogGroup
+      Type: AWS::EC2::ClientVpnEndpoint
+      Properties:
+        AuthenticationOptions:
+          - ActiveDirectory:
+              DirectoryId: !Ref ActiveDirectoryId
+            Type: directory-service-authentication
+        ClientCidrBlock: !Ref VpnClientCidrRange
+        ConnectionLogOptions:
+          CloudwatchLogGroup: !Ref ClientVpnCloudWatchLogGroup
+          Enabled: true
+        Description: AWS Client VPN authenticated with AWS Simple AD
+        DnsServers:
+          - !Ref ActiveDirectoryDnsServer1
+          - !Ref ActiveDirectoryDnsServer2
+        ServerCertificateArn: !Ref ServerCertificateArn
+        TransportProtocol: tcp
+        VpcId: !Ref ClientVpnTargetNetworkVpc
+        VpnPort: 443
+        TagSpecifications:
+          - ResourceType: client-vpn-endpoint
+            Tags:
+              - Key: Name
+                Value: AWS Client VPN authenticated with AWS Simple AD
+
+    ClientVpnAuthorizationRule:
+      DependsOn:
+        - ClientVpnTargetNetworkAssociation
+        - ClientVpnTargetNetworkAssociation2
+      Type: AWS::EC2::ClientVpnAuthorizationRule
+      Properties:
+        AccessGroupId:
+          !If [AllowOnlyAccessGroupForVpnAuthRule, !Ref AccessGroupId, !Ref "AWS::NoValue"]
+        AuthorizeAllGroups:
+          !If [AuthorizeAllUsersForVpnAuthRule, !Ref AuthorizeAllUsers, !Ref "AWS::NoValue"]
+        ClientVpnEndpointId: !Ref ClientVpnEndpoint
+        Description: Client VPN Authorization rule to allow usage of target network VPC as a route-forwarder to Transit Gateway
+        TargetNetworkCidr: !Ref ClientVpnTargetNetworkVpcCidr
+
+  # SSM Parameters
+    ClientVpnEndpointSSM:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Description: !Sub 'Client VPN Endpoint for ${BusinessUnit}'
+        Name: !Sub '/${BusinessUnit}/client-vpn-endpoint'
+        Tier: Standard
+        Type: String
+        Value: !Ref ClientVpnEndpoint
+
+Outputs:
+  ClientVpnEndpoint:
+    Description: ID of VPC
+    Value: !Ref ClientVpnEndpoint

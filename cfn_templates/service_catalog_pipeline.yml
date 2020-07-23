@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Continuous Delivery CodePipeline Deploys Network Account VPC, AD, and Client VPN Endpoint
+Parameters:
+  RepoName:
+    Type: String
+    Default: aws-client-vpn-factory
+  RepoOwner:
+    Type: String
+    Default: verticalrelevance
+  GitHubToken:
+    Type: String
+    NoEcho: true
+  BranchName:
+    Type: String
+    Default: master
+  ServiceCatalogBucketName:
+    Type: String
+  ServiceCatalogLinkedIamUser:
+    Type: String
+    Default: ''
+  ServiceCatalogLinkedIamRole:
+    Type: String
+    Default: ''
+Resources:
+  ServiceCatalogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref ServiceCatalogBucketName
+  S3Bucket:
+    Type: AWS::S3::Bucket
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codepipeline.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: codepipeline-service
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: Allow
+                Action: "*"
+                Resource: "*"
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: codebuild-clientvpn-sc
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - "ssm:*"
+                  - "s3:*"
+                  - "ec2:*"
+                  - "codepipeline:PutJobSuccessResult"
+                  - "codepipeline:PutJobFailureResult"
+                  - "cloudformation:*"
+                  - "codecommit:*"
+                  - "servicecatalog:*"
+                  - "ds:*"
+                  - "acm:*"
+                  - "iam:Get*"
+                Resource: "*"
+              -
+                Action:
+                  - "logs:*"
+                Effect: Allow
+                Resource: "arn:aws:logs:*:*:*"
+  DeployServiceCatalogPortfolios:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: Codebuild project to Deploy Service Catalog Portfolios
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/python:3.7.1
+        EnvironmentVariables:
+          - Name: SERVICE_CATALOG_S3_BUCKET
+            Type: PLAINTEXT
+            Value: !Ref ServiceCatalogBucketName
+          - Name: SERVICE_CATALOG_LINKED_IAM_USER
+            Type: PLAINTEXT
+            Value: !Ref ServiceCatalogLinkedIamUser
+          - Name: SERVICE_CATALOG_LINKED_IAM_ROLE_ARN
+            Type: PLAINTEXT
+            Value: !Ref ServiceCatalogLinkedIamRole
+      Source:
+        BuildSpec: buildspec_files/buildspec_deploy_sc_portfolios.yml
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 45
+
+  ValidateCfnTemplates:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: Codebuild project to Validate CloudFormation Templates
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/python:3.7.1
+      Source:
+        BuildSpec: buildspec_files/buildspec_validate_service_catalog_templates.yml
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 45
+  MyCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref "S3Bucket"
+        Type: S3
+      RoleArn: !GetAtt [CodePipelineRole, Arn]
+      Stages:
+        - Name: Commit
+          Actions:
+          - Name: Commit
+            ActionTypeId:
+              Category: Source
+              Owner: ThirdParty
+              Version: 1
+              Provider: GitHub
+            OutputArtifacts:
+              - Name: SourceOutput
+            Configuration:
+              Owner: !Ref RepoOwner
+              Repo: !Ref RepoName
+              Branch: !Ref BranchName
+              OAuthToken: !Ref GitHubToken
+        - Name: ValidateCfnTemplates
+          Actions:
+            - Name: ValidateCfnTemplates
+              RunOrder: 1
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref ValidateCfnTemplates
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: ValidateCfnOutput
+        - Name: ServiceCatalogDeploymentApprovalGate
+          Actions:
+            - Name: ManualApprovalGate
+              RunOrder: 1
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+        - Name: DeployServiceCatalogPortfolios
+          Actions:
+            - Name: DeployServiceCatalogPortfolios
+              RunOrder: 1
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref DeployServiceCatalogPortfolios
+              InputArtifacts:
+                - Name: SourceOutput

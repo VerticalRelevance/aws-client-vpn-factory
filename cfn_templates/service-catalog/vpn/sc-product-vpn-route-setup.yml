@@ -1,0 +1,58 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Client VPN Auth and Route Setup ServiceCatalog product
+Parameters:
+  PortfolioProvider:
+    Type: String
+    Description: Owner and Distributor Name
+  PortfolioId:
+    Type: String
+    Description: The ServiceCatalog portfolio this product will be attached to.
+  RepoRootURL:
+    Type: String
+    Description: Root url for the repo containing the product templates.
+Resources:
+  ClientVpnAuthRouteSetupProduct:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: AWS Client VPN Auth and Route Config
+      Description: This product sets up a new Client VPN Authorization Ingress, Client VPN Route,
+        and modifies a specified Client VPN's Target Network Subnet's Route Table to add a new route
+        for a VPC that is being requested to allow VPN access to the Client VPN. This product should
+        live inside a centrallized network hub account.
+      Owner:
+        Ref: PortfolioProvider
+      Distributor:
+        Ref: PortfolioProvider
+      SupportDescription: Operations Team
+      SupportEmail: support@yourcompany.com
+      AcceptLanguage: en
+      SupportUrl: http://helpdesk.yourcompany.com
+      ProvisioningArtifactParameters:
+      - Description: baseline version
+        Info:
+          LoadTemplateFromURL:
+            Fn::Sub: "${RepoRootURL}vpn/client_vpn_route_setup.yml"
+        Name: v1.0
+  Associatevpc:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId:
+        Ref: PortfolioId
+      ProductId:
+        Ref: ClientVpnAuthRouteSetupProduct
+  ProductIdSSM:
+    DependsOn: ClientVpnAuthRouteSetupProduct
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description:
+        Fn::Sub: Service Catalog Product ID for Client VPN Auth and Route Setup
+      Name: "/client-vpn-route-setup/sc-product-id"
+      Tier: Standard
+      Type: String
+      Value:
+        Ref: ClientVpnAuthRouteSetupProduct
+Outputs:
+  ProductId:
+    Value:
+      Ref: ClientVpnAuthRouteSetupProduct

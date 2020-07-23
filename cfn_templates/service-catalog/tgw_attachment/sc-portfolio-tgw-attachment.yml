@@ -1,0 +1,87 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Transit Gateway Attachment Portfolio for Service Catalog
+Parameters:
+  PortfolioProvider:
+    Type: String
+    Description: Provider Name
+    Default: Vertical Relevance
+  PortfolioName:
+    Type: String
+    Description: Portfolio Name
+    Default: Service Catalog Transit Gateway Attachment for New/Existing VPCs
+  PortfolioDescription:
+    Type: String
+    Description: Portfolio Description
+    Default: Service Catalog Portfolio that contains products for creating Transit Gateway Attachments for VPCs. The purpose of these products
+      is to attach new and/or existing VPCs to the centralized network account's main Client VPN VPC Transit Gateway to allow Client VPN access
+      from that centralized network hub account. Products within this portfolio should be shared to other accounts within the AWS organization that will
+      need Client VPN access from the network hub account.
+  RepoRootURL:
+    Type: String
+    Description: Root url for the repo containing the product templates.
+    Default: ''
+  LinkedIamUser:
+    Type: String
+    Description: "(Optional) Your IAM User to allow access for you to launch products from this portfolio"
+    Default: ''
+  LinkedIamRoleArn:
+    Type: String
+    Description: "(Optional) Your IAM Role ARN to allow access for you to launch products from this portfolio"
+    Default: ''
+Conditions:
+  CondLinkYourIamUser:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: LinkedIamUser
+          - ''
+  CondLinkYourIamRole:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: LinkedIamRoleArn
+          - ''
+Resources:
+  TransitGatewayAttachmentportfolio:
+    Type: AWS::ServiceCatalog::Portfolio
+    Properties:
+      ProviderName:
+        Ref: PortfolioProvider
+      Description:
+        Ref: PortfolioDescription
+      DisplayName:
+        Ref: PortfolioName
+  LinkYourIamUser:
+    Condition: CondLinkYourIamUser
+    Type: AWS::ServiceCatalog::PortfolioPrincipalAssociation
+    Properties:
+      PrincipalARN: !Sub 'arn:aws:iam::${AWS::AccountId}:user/${LinkedIamUser}'
+      PortfolioId:
+        Ref: TransitGatewayAttachmentportfolio
+      PrincipalType: IAM
+  LinkYourIamRole:
+    Condition: CondLinkYourIamRole
+    Type: AWS::ServiceCatalog::PortfolioPrincipalAssociation
+    Properties:
+      PrincipalARN: !Ref LinkedIamRoleArn
+      PortfolioId:
+        Ref: TransitGatewayAttachmentportfolio
+      PrincipalType: IAM
+  TransitGatewayAttachmentProduct:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        PortfolioProvider:
+          Ref: PortfolioProvider
+        PortfolioId:
+          Ref: TransitGatewayAttachmentportfolio
+        RepoRootURL:
+          Ref: RepoRootURL
+      TemplateURL:
+        Fn::Sub: "${RepoRootURL}tgw_attachment/sc-product-tgw-attachment.yml"
+      TimeoutInMinutes: 5
+Outputs:
+  TransitGatewayAttachmentProductId:
+    Value:
+      Fn::GetAtt:
+      - TransitGatewayAttachmentProduct
+      - Outputs.ProductId

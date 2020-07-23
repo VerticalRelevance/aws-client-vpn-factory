@@ -1,0 +1,2 @@
+.idea/**/*
+scripts/cfn_utils/__pycache__/**/*

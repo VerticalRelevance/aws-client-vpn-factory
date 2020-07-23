@@ -1,0 +1,58 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Transit Gateway Attachment and Route Setup ServiceCatalog product
+Parameters:
+  PortfolioProvider:
+    Type: String
+    Description: Owner and Distributor Name
+  PortfolioId:
+    Type: String
+    Description: The ServiceCatalog portfolio this product will be attached to.
+  RepoRootURL:
+    Type: String
+    Description: Root url for the repo containing the product templates.
+Resources:
+  TransitGatewayAttachmentProduct:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: AWS Transit Gateway Attachment
+      Description: This product sets up a Transit Gateway Attachment for new/existing VPCs and modifies up to 3 specified Route Tables within
+        those VPCs. The purpose of this TGW Attachment is to allow routing from the specified VPC back to the main centralized network hub account's
+        Client VPN VPC. This allows helps to allow  VPCs in other accounts share the same Client VPN connection that is configured within the main
+        network hub account. This product should live and be launched from inside other accounts.
+      Owner:
+        Ref: PortfolioProvider
+      Distributor:
+        Ref: PortfolioProvider
+      SupportDescription: Operations Team
+      SupportEmail: support@yourcompany.com
+      AcceptLanguage: en
+      SupportUrl: http://helpdesk.yourcompany.com
+      ProvisioningArtifactParameters:
+      - Description: baseline version
+        Info:
+          LoadTemplateFromURL:
+            Fn::Sub: "${RepoRootURL}tgw_attachment/tgw_attachment.yml"
+        Name: v1.0
+  Associatevpc:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId:
+        Ref: PortfolioId
+      ProductId:
+        Ref: TransitGatewayAttachmentProduct
+  ProductIdSSM:
+    DependsOn: TransitGatewayAttachmentProduct
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description:
+        Fn::Sub: Service Catalog Product ID for Client VPN Auth and Route Setup
+      Name: "/transit-gateway-attachment/sc-product-id"
+      Tier: Standard
+      Type: String
+      Value:
+        Ref: TransitGatewayAttachmentProduct
+Outputs:
+  ProductId:
+    Value:
+      Ref: TransitGatewayAttachmentProduct

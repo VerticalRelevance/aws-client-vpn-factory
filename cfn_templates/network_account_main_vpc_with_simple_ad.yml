@@ -1,0 +1,255 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Organization:
+    Type: String
+    Default: Vertical Relevance
+  DomainName:
+    Description: FQDN of the domain for this directory
+    Type: String
+    Default: clientvpnad.verticalrelevance.com
+  SimpleADShortName:
+    Description: Netbios name of the domain for this directory
+    Type: String
+    Default: clientvpnad
+  SimpleADPW:
+    Description: Domain admin Password
+    Type: String
+    NoEcho: true
+    Default: Password123!
+  Size:
+    Description: Size of the Simple AD
+    Type: String
+    AllowedValues:
+      - Small
+      - Large
+    Default: Small
+  VpnVpcCidr:
+    Description: CIDR Block of central hub VPN VPC
+    Type: String
+    Default: '12.0.0.0/16'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  PrivateVpnRouterSubnet1:
+    Description: Private Subnet to be used as target network Subnet for Client VPN
+    Type: String
+    Default: '12.0.1.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  PrivateVpnRouterSubnet2:
+    Description: Private Subnet to be used as target network Subnet for Client VPN
+    Type: String
+    Default: '12.0.2.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  NatGatewayVpnRouterSubnet:
+    Description: Private Subnet to be used as target network Subnet for Client VPN
+    Type: String
+    Default: '12.0.3.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  BusinessUnit:
+    Description: AWS Organizational Unit
+    Type: String
+    Default: Developer
+Resources:
+    VPC:
+        Type: AWS::EC2::VPC
+        Properties:
+            EnableDnsSupport: true
+            EnableDnsHostnames: true
+            CidrBlock: !Ref VpnVpcCidr
+            Tags:
+              - Key: Name
+                Value: !Sub 'Main Network Hub Client VPN VPC'
+
+    SubnetOne:
+        Type: AWS::EC2::Subnet
+        Properties:
+            AvailabilityZone:
+                Fn::Select:
+                - 0
+                - Fn::GetAZs: {Ref: 'AWS::Region'}
+            VpcId: !Ref 'VPC'
+            CidrBlock: !Ref PrivateVpnRouterSubnet1
+            Tags:
+              - Key: Name
+                Value: !Sub 'Main Network Hub Client VPN VPC Private Subnet 1'
+
+    SubnetTwo:
+        Type: AWS::EC2::Subnet
+        Properties:
+            AvailabilityZone:
+                Fn::Select:
+                - 1
+                - Fn::GetAZs: {Ref: 'AWS::Region'}
+            VpcId: !Ref 'VPC'
+            CidrBlock: !Ref PrivateVpnRouterSubnet2
+            Tags:
+              - Key: Name
+                Value: !Sub 'Main Network Hub Client VPN VPC Private Subnet 2'
+
+    InternetGateway:
+        Type: AWS::EC2::InternetGateway
+
+    GatewayAttachement:
+        Type: AWS::EC2::VPCGatewayAttachment
+        Properties:
+            VpcId: !Ref 'VPC'
+            InternetGatewayId: !Ref 'InternetGateway'
+
+    RouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            VpcId: !Ref 'VPC'
+            Tags:
+              - Key: Name
+                Value: Main Network Hub VPC Client VPN Subnet Route Table
+
+    SubnetOneRouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref SubnetOne
+            RouteTableId: !Ref RouteTable
+
+    SubnetTwoRouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref SubnetTwo
+            RouteTableId: !Ref RouteTable
+
+    NatSubnetRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        SubnetId: !Ref NatGatewaySubnet
+        RouteTableId: !Ref NatGatewayRouteTable
+
+    # Nat Gateway Config
+    NatGatewaySubnet:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone:
+          Fn::Select:
+            - 1
+            - Fn::GetAZs: {Ref: 'AWS::Region'}
+        VpcId: !Ref 'VPC'
+        CidrBlock: !Ref NatGatewayVpnRouterSubnet
+        Tags:
+          - Key: Name
+            Value: !Sub 'Main Network Hub Client VPN VPC NAT Gateway Subnet'
+
+    NatGateway:
+      Type: AWS::EC2::NatGateway
+      Properties:
+        AllocationId: !GetAtt NatGatewayEIP.AllocationId
+        SubnetId: !Ref NatGatewaySubnet
+        Tags:
+          - Key: Organization
+            Value: !Ref Organization
+
+    NatGatewayEIP:
+      Type: AWS::EC2::EIP
+      Properties:
+        Domain: vpc
+
+    NatGatewayRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId: !Ref 'VPC'
+
+    NatGatewayRoute:
+      Type: AWS::EC2::Route
+      DependsOn: GatewayAttachement
+      Properties:
+        RouteTableId: !Ref 'NatGatewayRouteTable'
+        DestinationCidrBlock: '0.0.0.0/0'
+        GatewayId: !Ref 'InternetGateway'
+
+    PrivateSubnetNatGatewayRoute:
+      Type: AWS::EC2::Route
+      DependsOn: GatewayAttachement
+      Properties:
+        RouteTableId: !Ref 'RouteTable'
+        DestinationCidrBlock: '0.0.0.0/0'
+        NatGatewayId: !Ref 'NatGateway'
+
+# Simple AD Setup
+    SimpleAD:
+        Type: 'AWS::DirectoryService::SimpleAD'
+        Properties:
+            CreateAlias: false
+            EnableSso: false
+            Name: !Ref DomainName
+            Password: !Ref SimpleADPW
+            ShortName: !Ref SimpleADShortName
+            Size: !Ref Size
+            VpcSettings:
+                SubnetIds:
+                - !Ref SubnetOne
+                - !Ref SubnetTwo
+                VpcId: !Ref VPC
+
+# Transit Gateway
+    TransitGateway:
+      Type: AWS::EC2::TransitGateway
+      Properties:
+        AutoAcceptSharedAttachments: enable
+        DefaultRouteTableAssociation: enable
+        DefaultRouteTablePropagation: enable
+        Description: Central network hub TGW for VPN forwarding
+        DnsSupport: enable
+        Tags:
+          - Key: Name
+            Value: Central network hub TGW
+        VpnEcmpSupport: enable
+
+    TransitGatewayAttachment:
+      Type: AWS::EC2::TransitGatewayAttachment
+      Properties:
+        SubnetIds:
+          - !Ref SubnetOne
+          - !Ref SubnetTwo
+        Tags:
+          - Key: Name
+            Value: Central network hub TGW Attachment
+        TransitGatewayId: !Ref TransitGateway
+        VpcId: !Ref VPC
+
+Outputs:
+  VpcCidr:
+    Description: ClientVpnTargetNetworkVpcCidr
+    Value: !Ref VpnVpcCidr
+  RouteTableId:
+    Description: RouteTableId
+    Value: !Ref RouteTable
+  TransitGatewayId:
+    Description: TransitGatewayId
+    Value: !Ref TransitGateway
+  BusinessUnit:
+    Description: AWS Organizational Unit
+    Value: !Ref BusinessUnit
+  VpcID:
+    Description: ID of VPC
+    Value: !Ref VPC
+  SubnetOneID:
+    Description: ID of SubnetOne
+    Value: !Ref SubnetOne
+  SubnetTwoID:
+    Description: ID of SubnetTwo
+    Value: !Ref SubnetTwo
+  DirectoryID:
+    Description: ID of the SimpleAD
+    Value: !Ref SimpleAD
+  PrimaryDNS:
+    Description: DNS IPs of the SimpleAD
+    Value: !Select
+      - '0'
+      - !GetAtt
+        - SimpleAD
+        - DnsIpAddresses
+  SecondaryDNS:
+    Description: DNS IPs of the SimpleAD
+    Value: !Select
+      - '1'
+      - !GetAtt
+        - SimpleAD
+        - DnsIpAddresses

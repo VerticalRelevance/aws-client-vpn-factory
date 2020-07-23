@@ -1,0 +1,213 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  InstanceType:
+    Description: EC2 Instance Type
+    Type: String
+    Default: 't2.micro'
+  VpcCidr:
+    Description: CIDR Block of central hub VPN VPC
+    Type: String
+    Default: '15.0.0.0/16'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  PrivateVpnRouterSubnet1:
+    Description: Private Subnet to be used as target network Subnet for Client VPN
+    Type: String
+    Default: '15.0.1.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  PrivateVpnRouterSubnet2:
+    Description: Private Subnet to be used as target network Subnet for Client VPN
+    Type: String
+    Default: '15.0.2.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  NatGatewayVpnRouterSubnet:
+    Description: Private Subnet to be used as target network Subnet for Client VPN
+    Type: String
+    Default: '15.0.3.0/24'
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(1[6-9]|2[0-8]))$"
+  BusinessUnit:
+    Description: AWS Organizational Unit
+    Type: String
+    Default: Business-Unit-1
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      "AMI": "ami-02f6fe0d7c9a998ab"
+    us-west-2:
+      "AMI": "ami-000ce50ab0df5943f"
+Resources:
+    VPC:
+        Type: AWS::EC2::VPC
+        Properties:
+            EnableDnsSupport: true
+            EnableDnsHostnames: true
+            CidrBlock: !Ref VpcCidr
+            Tags:
+              - Key: Name
+                Value: !Sub 'Business-Unit-1 VPC'
+              - Key: Organizational Unit
+                Value: !Ref BusinessUnit
+
+    InstanceSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: VPC Security Group
+        VpcId:
+          Ref: VPC
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+          - IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            CidrIp: 0.0.0.0/0
+
+    SubnetOne:
+        Type: AWS::EC2::Subnet
+        Properties:
+            AvailabilityZone:
+                Fn::Select:
+                - 0
+                - Fn::GetAZs: {Ref: 'AWS::Region'}
+            VpcId: !Ref 'VPC'
+            CidrBlock: !Ref PrivateVpnRouterSubnet1
+            Tags:
+              - Key: Name
+                Value: !Sub 'Private Subnet for Business-Unit-1 VPC'
+              - Key: Organizational Unit
+                Value: !Ref BusinessUnit
+
+    SubnetTwo:
+        Type: AWS::EC2::Subnet
+        Properties:
+            AvailabilityZone:
+                Fn::Select:
+                - 1
+                - Fn::GetAZs: {Ref: 'AWS::Region'}
+            VpcId: !Ref 'VPC'
+            CidrBlock: !Ref PrivateVpnRouterSubnet2
+            Tags:
+              - Key: Name
+                Value: !Sub 'Private Subnet for Business-Unit-1 VPC'
+              - Key: Organizational Unit
+                Value: !Ref BusinessUnit
+
+    InternetGateway:
+        Type: AWS::EC2::InternetGateway
+
+    GatewayAttachement:
+        Type: AWS::EC2::VPCGatewayAttachment
+        Properties:
+            VpcId: !Ref 'VPC'
+            InternetGatewayId: !Ref 'InternetGateway'
+
+    RouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            VpcId: !Ref 'VPC'
+            Tags:
+              - Key: Name
+                Value: Test VPC Private Subnet Route Table
+
+    SubnetOneRouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref SubnetOne
+            RouteTableId: !Ref RouteTable
+
+    SubnetTwoRouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref SubnetTwo
+            RouteTableId: !Ref RouteTable
+
+    NatSubnetRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        SubnetId: !Ref NatGatewaySubnet
+        RouteTableId: !Ref NatGatewayRouteTable
+
+# Nat Gateway Config
+    NatGatewaySubnet:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone:
+          Fn::Select:
+            - 1
+            - Fn::GetAZs: {Ref: 'AWS::Region'}
+        VpcId: !Ref 'VPC'
+        CidrBlock: !Ref NatGatewayVpnRouterSubnet
+        Tags:
+          - Key: Name
+            Value: !Sub 'NAT Subnet for Business-Unit-1 VPC'
+          - Key: Organizational Unit
+            Value: !Ref BusinessUnit
+
+    NatGateway:
+      Type: AWS::EC2::NatGateway
+      Properties:
+        AllocationId: !GetAtt NatGatewayEIP.AllocationId
+        SubnetId: !Ref NatGatewaySubnet
+
+    NatGatewayEIP:
+      Type: AWS::EC2::EIP
+      Properties:
+        Domain: vpc
+
+    NatGatewayRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId: !Ref 'VPC'
+
+    NatGatewayRoute:
+      Type: AWS::EC2::Route
+      DependsOn: GatewayAttachement
+      Properties:
+        RouteTableId: !Ref 'NatGatewayRouteTable'
+        DestinationCidrBlock: '0.0.0.0/0'
+        GatewayId: !Ref 'InternetGateway'
+
+    PrivateSubnetNatGatewayRoute:
+      Type: AWS::EC2::Route
+      DependsOn: GatewayAttachement
+      Properties:
+        RouteTableId: !Ref 'RouteTable'
+        DestinationCidrBlock: '0.0.0.0/0'
+        NatGatewayId: !Ref 'NatGateway'
+
+# Ec2 Instance
+    WebAppEc2Instance:
+      Type: AWS::EC2::Instance
+      Properties:
+        ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+        InstanceType: !Ref InstanceType
+        SecurityGroupIds:
+          - !Ref InstanceSecurityGroup
+        SubnetId: !Ref SubnetOne
+        Tags:
+          - Key: Name
+            Value: RedHat Bitnami Wordpress Site
+
+
+Outputs:
+  VpcID:
+    Description: ID of VPC
+    Value: !Ref VPC
+  PrivateSubnetRouteTableId:
+    Description: PrivateSubnetRouteTableId
+    Value: !Ref RouteTable
+  VpcCidr:
+    Description: CIDR of VPC
+    Value: !Ref VpcCidr
+  PrivateSubnetOneID:
+    Description: ID of SubnetOne
+    Value: !Ref SubnetOne
+  PrivateSubnetTwoID:
+    Description: ID of SubnetTwo
+    Value: !Ref SubnetTwo
