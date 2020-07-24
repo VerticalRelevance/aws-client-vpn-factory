@@ -25,6 +25,3 @@ aws acm import-certificate \
   --region $REGION
 cd $ROOT_DIR
 rm -rf easy-rsa
-
-
-
